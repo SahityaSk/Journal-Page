@@ -1,4 +1,4 @@
-const issues = [
+const initialIssues = [
   {
     id: 'v3i2', volume: 'Vol. 3 · Issue 2', year: 2026, type: 'regular', date: 'September 30, 2026', period: 'April 2026 — September 2026', cover: 'cover-green', title: 'The September edition', subtitle: '', descriptor: 'Multidisciplinary research', articles: [
       {category:'Engineering & Technology',title:'A Due Diligence Study on the Factors That Matter For Successful Implementation of Metro Rail Projects from Indian Context',authors:'Sunil Kumar K; Soundaria, S.M.',pages:'1–39'},
@@ -70,56 +70,7 @@ const issues = [
     {category:'Biological Sciences',title:'Gut Microbiome and Its Association with Antibiotic Resistance: A Short Review for General Public Awareness',authors:'S. Bhowmick'},
     {category:'Physical Sciences',title:'Recent Advances in Sensors Applications Using AZO and GZO as Plasmonic Material in IR and NIR Frequency Region',authors:'S. Rajak'}
   ]}
-];
+]
 
-const list = document.querySelector('#issue-list');
-const searchInput = document.querySelector('#search');
-const yearSelect = document.querySelector('#year-filter');
-const resultCount = document.querySelector('#result-count');
-const emptyState = document.querySelector('#empty-state');
-const dialog = document.querySelector('#issue-dialog');
-const dialogContent = document.querySelector('#dialog-content');
-let activeType = 'all';
+export default initialIssues;
 
-const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const issueSearchText = (issue) => [issue.volume,issue.year,issue.type,issue.date,issue.period,issue.title,issue.subtitle,issue.descriptor,...issue.articles.flatMap(a=>[a.category,a.title,a.authors])].join(' ').toLowerCase();
-
-function renderIssues(){
-  const term = searchInput.value.trim().toLowerCase();
-  const year = yearSelect.value;
-  const visible = issues.filter(issue => (year==='all'||String(issue.year)===year) && (activeType==='all'||issue.type===activeType) && (!term||issueSearchText(issue).includes(term)));
-  resultCount.textContent = `${String(visible.length).padStart(2,'0')} ${visible.length===1?'ISSUE':'ISSUES'} FOUND`;
-  list.innerHTML = visible.map((issue,index)=>`<article class="issue-card ${issue.type==='special'?'is-special':''}">
-    <div class="issue-cover ${issue.cover}" aria-label="Issue cover artwork"><span class="cover-label">NATURAL SCIENCES<br>& APPLIED TECH.</span><strong>${issue.volume.replace('Vol. ','V')}</strong><small>${issue.year} · INSAT</small></div>
-    <div class="issue-main"><div class="issue-kicker"><span class="issue-volume">${escapeHtml(issue.volume)} (${issue.year})</span><span class="issue-type">${issue.type==='special'?'Special issue':'Regular issue'}</span></div><h3 class="issue-title">${escapeHtml(issue.title)}</h3>${issue.subtitle?`<div class="issue-theme">${escapeHtml(issue.subtitle)}</div>`:''}<div class="issue-date">${escapeHtml(issue.period)} · Released ${escapeHtml(issue.date)}</div></div>
-    <div class="issue-detail"><strong>${issue.type==='special'?'Guest editor':'In this issue'}</strong><div class="issue-authors">${escapeHtml(issue.descriptor)}</div><div class="issue-stats"><span>${issue.articles.length} featured papers</span><span>·</span><span>Open access</span></div></div>
-    <div class="issue-action"><button type="button" data-issue="${issue.id}" aria-label="Browse ${escapeHtml(issue.volume)} contents">Browse contents <span>↗</span></button><small>${String(issues.length-index).padStart(2,'0')} / 0${issues.length}</small></div>
-  </article>`).join('');
-  emptyState.hidden = visible.length!==0;
-  list.hidden = visible.length===0;
-}
-
-function openIssue(id){
-  const issue = issues.find(entry=>entry.id===id);
-  if(!issue)return;
-  const categorySequence = [...new Set(issue.articles.map(article=>article.category))];
-  const content = categorySequence.map(category=>`<div class="article-group"><div class="dialog-toolbar"><span>${escapeHtml(category)}</span><span>${String(issue.articles.filter(a=>a.category===category).length).padStart(2,'0')} PAPERS</span></div><ol class="article-list">${issue.articles.filter(article=>article.category===category).map(article=>`<li class="article-row"><h3>${escapeHtml(article.title)}</h3><p>${escapeHtml(article.authors)}</p>${article.pages?`<span class="article-pages">Pages ${escapeHtml(article.pages)}</span>`:''}</li>`).join('')}</ol></div>`).join('');
-  dialogContent.innerHTML = `<div class="dialog-head"><div class="eyebrow"><span class="eyebrow-line"></span>${issue.type==='special'?'SPECIAL ISSUE':'JOURNAL ISSUE'}</div><h2 id="dialog-title">${escapeHtml(issue.title)}</h2>${issue.subtitle?`<div class="dialog-subtitle">${escapeHtml(issue.subtitle)}</div>`:''}<div class="dialog-meta"><span>${escapeHtml(issue.volume)} · ${issue.year}</span><span>${escapeHtml(issue.date)}</span><span>Open access</span></div></div><div class="dialog-body">${content}${issue.type==='special'?`<div class="dialog-editor"><strong>Guest editor</strong><br>${escapeHtml(issue.descriptor)}</div>`:''}<div class="dialog-editor">Published by the Institute of Natural Sciences and Applied Technology, Kolkata. For article and submission enquiries, contact <a href="mailto:office.insat@gmail.com">office.insat@gmail.com</a>.</div></div>`;
-  dialog.showModal();
-}
-
-const yearOptions=[...new Set(issues.map(issue=>issue.year))].sort((a,b)=>b-a);
-yearOptions.forEach(year=>{const option=document.createElement('option');option.value=year;option.textContent=year;yearSelect.append(option);});
-document.querySelector('.special-count').textContent=String(issues.filter(issue=>issue.type==='special').length).padStart(2,'0');
-searchInput.addEventListener('input',renderIssues);
-yearSelect.addEventListener('change',renderIssues);
-document.querySelectorAll('.view-btn').forEach(button=>button.addEventListener('click',()=>{activeType=button.dataset.type;document.querySelectorAll('.view-btn').forEach(item=>item.classList.toggle('selected',item===button));renderIssues();}));
-list.addEventListener('click',event=>{const button=event.target.closest('[data-issue]');if(button)openIssue(button.dataset.issue);});
-document.querySelector('.dialog-close').addEventListener('click',()=>dialog.close());
-dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();});
-document.querySelector('#reset-filters').addEventListener('click',()=>{searchInput.value='';yearSelect.value='all';activeType='all';document.querySelectorAll('.view-btn').forEach(button=>button.classList.toggle('selected',button.dataset.type==='all'));renderIssues();});
-document.addEventListener('keydown',event=>{if(event.key==='/'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!dialog.open){event.preventDefault();searchInput.focus();}});
-const menuToggle=document.querySelector('.menu-toggle');
-menuToggle.addEventListener('click',()=>{const open=menuToggle.getAttribute('aria-expanded')==='true';menuToggle.setAttribute('aria-expanded',String(!open));document.querySelector('.main-nav').classList.toggle('is-open',!open);});
-document.querySelectorAll('.main-nav a').forEach(link=>link.addEventListener('click',()=>{document.querySelector('.main-nav').classList.remove('is-open');menuToggle.setAttribute('aria-expanded','false');}));
-renderIssues();
