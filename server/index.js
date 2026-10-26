@@ -45,7 +45,7 @@ async function start() {
 
   app.use(express.static(builtClient));
   app.get('*', (_req, res) => res.sendFile(path.join(builtClient, 'index.html')));
-  app.listen(port, () => console.log(`NSAT API and site are running on port ${port}.`));
+  app.listen(port, () => console.log(`INSAT API and site are running on port ${port}.`));
 }
 
 start().catch((error) => {

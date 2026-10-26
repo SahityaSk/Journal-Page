@@ -17,7 +17,7 @@ export default async function seedDatabase() {
   const existing = await Issue.countDocuments();
   if (existing > 0) return;
   await Issue.insertMany(initialIssues.map(toDocument));
-  console.log(`Seeded ${initialIssues.length} NSAT issues.`);
+  console.log(`Seeded ${initialIssues.length} INSAT issues.`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
