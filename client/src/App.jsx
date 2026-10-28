@@ -15,11 +15,22 @@ function Brand() {
   return <a className="brand" href="/" aria-label="Institute of Natural Sciences and Applied Technology home"><img className="official-logo" src="/insat-logo.avif" alt="" /><span className="brand-copy"><strong>INSAT</strong><small>Institute of Natural Sciences<br />and Applied Technology</small></span></a>;
 }
 
+const siteMenus = [
+  { label: 'About', href: '/about', items: [['The Organisation', '/about/organisation'], ['Mission & Vision', '/about/mission-vision'], ['Centers', '/about/centers']] },
+  { label: 'Research', href: '/research', items: [['Thrust Areas', '/research/thrust-areas'], ['Facilities', '/research/facilities'], ['Publications', '/research/publications'], ['Publication Ethics and Publication Malpractice', '/research/publication-ethics'], ['Books / Proceedings', '/research/books-proceedings']] },
+  { label: 'People', href: '/people', items: [['International Advisory Committee', '/people/advisory-committee'], ['Researchers', '/people/researchers'], ['Researcher Home Page', '/people/researcher-home-page'], ['Students', '/people/students'], ['Alumni', '/people/alumni']] },
+  { label: 'Journals', href: '/journals', items: [['Natural Sciences and Applied Technology', '/journals/natural-sciences-applied-technology'], ['Natural Sciences & Applied Tech: Issues', '/issues'], ['Reviews and Reports', '/journals/reviews-reports'], ['Reviews and Reports Issues', '/journals/reviews-reports-issues']] },
+  { label: 'Engage', href: '/engage', items: [['Careers', '/engage/careers'], ['Collaborators', '/engage/collaborators'], ['Partners', '/engage/partners'], ['Sponsors', '/engage/sponsors']] },
+  { label: 'Announcements', href: '/announcements', items: [['News', '/announcements/news'], ['Events', '/announcements/events'], ['Advertisements', '/announcements/advertisements']] },
+  { label: 'Media', href: '/media', items: [['Print', '/media/print'], ['Photos', '/media/photos'], ['Video', '/media/video']] },
+];
+
 function Header() {
+  const [openMenu, setOpenMenu] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
-  const links = [['Home', '/'], ['About the journal', '/about'], ['For authors', '/for-authors'], ['Issues', '/issues'], ['Special issues', '/special-issues'], ['Contact', '/contact']];
-  return <><div className="topline"><div className="topline-links"><a href="/">Home</a><a href="/about">About the journal</a><a href="/for-authors">For authors</a><a href="/contact">Contact</a></div><span>Peer reviewed · Open access · ISSN 3049-4206</span></div><header className="site-header"><Brand /><button className="menu-toggle" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><span /><span /></button><nav className={`main-nav ${menuOpen ? 'is-open' : ''}`} aria-label="Main navigation">{links.map(([label, href]) => <a key={href} className={currentPath === href ? 'nav-active' : ''} href={href} onClick={() => setMenuOpen(false)}>{label}</a>)}</nav><div className="header-actions"><a className="editor-login" href="/admin">Editorial login</a><a className="submit-link" href="mailto:office.insat@gmail.com?subject=INSAT%20Manuscript%20Submission">Submit a paper <span>↗</span></a></div></header></>;
+  const isActive = (href) => href === '/' ? currentPath === '/' : currentPath === href || currentPath.startsWith(`${href}/`);
+  return <><div className="topline"><nav className={`topline-links ${menuOpen ? 'is-open' : ''}`} aria-label="Main navigation"><a className={`topline-home ${isActive('/') ? 'nav-active' : ''}`} href="/">Home</a>{siteMenus.map(({ label, href, items }) => <div key={href} className={`topline-item ${isActive(href) ? 'nav-active' : ''} ${openMenu === href ? 'menu-expanded' : ''}`} onMouseEnter={() => setOpenMenu(href)} onMouseLeave={() => setOpenMenu('')}><a className="topline-link" href={href}>{label}</a><button type="button" className="dropdown-toggle" aria-label={`Show ${label} pages`} aria-expanded={openMenu === href} onClick={() => setOpenMenu(openMenu === href ? '' : href)}>⌄</button><div className="topline-dropdown">{items.map(([item, itemHref]) => <a key={itemHref} href={itemHref} onClick={() => { setOpenMenu(''); setMenuOpen(false); }}>{item}</a>)}</div></div>)}<a className={`topline-contact ${isActive('/contact') ? 'nav-active' : ''}`} href="/contact">Contact</a></nav><span className="topline-meta">Peer reviewed · Open access · ISSN 3049-4206</span><button className="menu-toggle" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><span /><span /></button></div><header className="site-header"><Brand /><div className="header-actions"><a className="editor-login" href="/account?mode=login">Log in</a><a className="account-register" href="/account?mode=register">Register</a><a className="submit-link" href="/account?mode=register">Submit a paper <span>↗</span></a></div></header></>;
 }
 
 function Hero() {
@@ -56,6 +67,7 @@ function IssueArchive({ specialOnly = false, compact = false }) {
   const [loading, setLoading] = useState(true);
   const [usingPreview, setUsingPreview] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const [availableYears, setAvailableYears] = useState([...new Set(previewIssues.map((issue) => issue.year))].sort((a, b) => b - a));
 
   useEffect(() => {
@@ -98,9 +110,9 @@ function IssueArchive({ specialOnly = false, compact = false }) {
   }, [query, reloadKey, search, type, year]);
 
   const reset = () => { setSearch(''); setYear('all'); setType(specialOnly ? 'special' : 'all'); };
-  const shownIssues = compact ? issues.slice(0, 3) : issues;
+  const shownIssues = compact ? issues.slice(0, expanded ? issues.length : 4) : issues;
 
-  return <><section className={`issue-section ${compact ? 'compact-archive' : ''}`} id="issues"><div className="section-heading"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" />{compact ? 'LATEST FROM THE JOURNAL' : specialOnly ? 'THEMED EDITIONS' : 'BROWSE THE ARCHIVE'}</div><h2>{compact ? <>Fresh research, <em>in context.</em></> : specialOnly ? <>Special issues, <em>new perspectives.</em></> : <>Every issue, <em>one place.</em></>}</h2></div><p>{compact ? 'Read the latest multidisciplinary research from the INSAT archive.' : specialOnly ? 'Focused collections bring researchers together around a shared question.' : 'Follow a subject, explore an edition, or search the complete archive.'}</p></div>{!compact && <div className="archive-tools"><label className="search-box"><span className="search-icon" aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search titles, authors, topics..." autoComplete="off" /><kbd>/</kbd></label><label className="select-wrap"><span className="sr-only">Filter by year</span><select value={year} onChange={(event) => setYear(event.target.value)}><option value="all">All years</option>{availableYears.map((item) => <option value={item} key={item}>{item}</option>)}</select><span className="select-chevron">⌄</span></label><div className="view-switch" role="group" aria-label="Issue type"><button className={`view-btn ${type === 'all' ? 'selected' : ''}`} onClick={() => setType('all')}>All issues</button><button className={`view-btn ${type === 'special' ? 'selected' : ''}`} onClick={() => setType(type === 'special' ? 'all' : 'special')}>Special issues <span className="special-count">{String(issues.filter((issue) => issue.type === 'special').length).padStart(2, '0')}</span></button></div></div>}<div className="results-line"><span aria-live="polite">{loading ? 'LOADING ISSUE ARCHIVE…' : compact ? 'RECENT EDITIONS' : `${String(issues.length).padStart(2, '0')} ${issues.length === 1 ? 'ISSUE' : 'ISSUES'} FOUND`}</span><span>{usingPreview ? 'PREVIEW CONTENT · LIVE ARCHIVE CONNECTS WHEN AVAILABLE' : 'Sorted by publication date'} <span className="sort-arrow">↓</span></span></div><div className="issue-list">{shownIssues.map((issue, index) => <article className={`issue-card ${issue.type === 'special' ? 'is-special' : ''}`} key={issue._id || issue.slug}><IssueCover issue={issue} /><div className="issue-main"><div className="issue-kicker"><span className="issue-volume">{issue.volume} ({issue.year})</span><span className="issue-type">{issue.type === 'special' ? 'Special issue' : 'Regular issue'}</span></div><h3 className="issue-title">{issue.title}</h3>{issue.subtitle && <div className="issue-theme">{issue.subtitle}</div>}<div className="issue-date">{issue.period} · Released {issue.date}</div></div><div className="issue-detail"><strong>{issue.type === 'special' ? 'Guest editor' : 'In this issue'}</strong><div className="issue-authors">{issue.descriptor}</div><div className="issue-stats"><span>{issue.articles?.length || 0} featured papers</span><span>·</span><span>Open access</span></div></div><div className="issue-action"><button type="button" onClick={() => setSelected(issue)} aria-label={`Browse ${issue.volume} contents`}>Browse contents <span>↗</span></button><small>{String(issues.length - index).padStart(2, '0')} / {String(issues.length).padStart(2, '0')}</small></div></article>)}</div>{!loading && !shownIssues.length && <div className="empty-state"><span>↗</span><h3>No issues found</h3><p>Try a different search term or year.</p><button onClick={reset}>Clear filters</button></div>}{compact && <a className="text-link archive-more" href="/issues">Browse the complete archive <span>↗</span></a>}</section><IssueDialog issue={selected} onClose={() => setSelected(null)} /></>;
+  return <><section className={`issue-section ${compact ? 'compact-archive' : ''}`} id="issues"><div className="section-heading"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" />{compact ? 'LATEST FROM THE JOURNAL' : specialOnly ? 'THEMED EDITIONS' : 'BROWSE THE ARCHIVE'}</div><h2>{compact ? <>Fresh research, <em>in context.</em></> : specialOnly ? <>Special issues, <em>new perspectives.</em></> : <>Every issue, <em>one place.</em></>}</h2></div><p>{compact ? 'Read the latest multidisciplinary research from the INSAT archive.' : specialOnly ? 'Focused collections bring researchers together around a shared question.' : 'Follow a subject, explore an edition, or search the complete archive.'}</p></div>{!compact && <div className="archive-tools"><label className="search-box"><span className="search-icon" aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search titles, authors, topics..." autoComplete="off" /><kbd>/</kbd></label><label className="select-wrap"><span className="sr-only">Filter by year</span><select value={year} onChange={(event) => setYear(event.target.value)}><option value="all">All years</option>{availableYears.map((item) => <option value={item} key={item}>{item}</option>)}</select><span className="select-chevron">⌄</span></label><div className="view-switch" role="group" aria-label="Issue type"><button className={`view-btn ${type === 'all' ? 'selected' : ''}`} onClick={() => setType('all')}>All issues</button><button className={`view-btn ${type === 'special' ? 'selected' : ''}`} onClick={() => setType(type === 'special' ? 'all' : 'special')}>Special issues <span className="special-count">{String(issues.filter((issue) => issue.type === 'special').length).padStart(2, '0')}</span></button></div></div>}<div className="results-line"><span aria-live="polite">{loading ? 'LOADING ISSUE ARCHIVE…' : compact ? 'RECENT EDITIONS' : `${String(issues.length).padStart(2, '0')} ${issues.length === 1 ? 'ISSUE' : 'ISSUES'} FOUND`}</span><span>{usingPreview ? 'PREVIEW CONTENT · LIVE ARCHIVE CONNECTS WHEN AVAILABLE' : 'Sorted by publication date'} <span className="sort-arrow">↓</span></span></div><div className="issue-list">{shownIssues.map((issue, index) => <article className={`issue-card ${issue.type === 'special' ? 'is-special' : ''}`} key={issue._id || issue.slug}><IssueCover issue={issue} /><div className="issue-main"><div className="issue-kicker"><span className="issue-volume">{issue.volume} ({issue.year})</span><span className="issue-type">{issue.type === 'special' ? 'Special issue' : 'Regular issue'}</span></div><h3 className="issue-title">{issue.title}</h3>{issue.subtitle && <div className="issue-theme">{issue.subtitle}</div>}<div className="issue-date">{issue.period} · Released {issue.date}</div></div><div className="issue-detail"><strong>{issue.type === 'special' ? 'Guest editor' : 'In this issue'}</strong><div className="issue-authors">{issue.descriptor}</div><div className="issue-stats"><span>{issue.articles?.length || 0} featured papers</span><span>·</span><span>Open access</span></div></div><div className="issue-action"><button type="button" onClick={() => setSelected(issue)} aria-label={`Browse ${issue.volume} contents`}>Browse contents <span>↗</span></button><small>{String(issues.length - index).padStart(2, '0')} / {String(issues.length).padStart(2, '0')}</small></div></article>)}</div>{!loading && !shownIssues.length && <div className="empty-state"><span>↗</span><h3>No issues found</h3><p>Try a different search term or year.</p><button onClick={reset}>Clear filters</button></div>}{compact && <div className="archive-more-actions">{issues.length > 4 && <button className="archive-more-button" onClick={() => setExpanded(!expanded)}>{expanded ? 'Show fewer issues ↑' : `See more issues (${issues.length - 4}) ↓`}</button>}<a className="text-link archive-more" href="/issues">View full archive <span>↗</span></a></div>}</section><IssueDialog issue={selected} onClose={() => setSelected(null)} /></>;
 }
 
 function InteriorHero({ eyebrow, title, emphasis, description }) {
@@ -147,8 +159,184 @@ function ContactPage() {
   return <><InteriorHero eyebrow="CONTACT INSAT" title="Start a" emphasis="conversation." description="Questions about the journal, a manuscript, or a special issue? The editorial office is here to help." /><section className="contact-page"><div className="contact-primary"><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> EDITORIAL OFFICE</div><h2>Natural Sciences<br />and Applied Technology</h2><p>Institute of Natural Sciences and Applied Technology<br />Flat F, 1/55, Bijaygarh, Jadavpur<br />Kolkata 700032, West Bengal, India</p><a href="mailto:office.insat@gmail.com" className="contact-emphasis">office.insat@gmail.com <span>↗</span></a></div><div className="contact-side"><div><span>CALL THE EDITORIAL OFFICE</span><a href="tel:+917699787147">+91 7699787147</a><a href="tel:+919748547109">+91 9748547109</a></div><div><span>PUBLISHER</span><p>Director<br />Institute of Natural Sciences and Applied Technology</p></div><a className="map-link" href="https://maps.google.com/?q=Flat+F+1%2F55+Bijaygarh+Jadavpur+Kolkata+700032" target="_blank" rel="noreferrer">View the Kolkata address on a map ↗</a></div></section></>;
 }
 
+const institutePages = {
+  '/research': {
+    title: 'Research', eyebrow: 'DISCOVERY & APPLICATION', heading: 'Ideas that move knowledge forward.',
+    intro: 'INSAT brings natural sciences and applied technology together through inquiry, collaboration, and practical work.',
+    cards: [['Natural sciences', 'Explore questions across the physical, chemical, biological, and environmental sciences.'], ['Applied technology', 'Connect scientific understanding with engineering, computing, data, and useful technologies.'], ['Interdisciplinary work', 'Share approaches that cross fields and respond to complex real-world challenges.']],
+  },
+  '/people': {
+    title: 'People', eyebrow: 'OUR COMMUNITY', heading: 'Researchers, editors, and collaborators.',
+    intro: 'The INSAT community includes people who support research, peer review, publishing, and the exchange of ideas.',
+    cards: [['Editorial office', 'The editorial team coordinates journal enquiries, submissions, and publication matters.'], ['Authors & reviewers', 'Researchers contribute original work and help maintain a thoughtful peer review process.'], ['Collaborators', 'Institutions and partners help create opportunities for shared learning and research.']],
+  },
+  '/engage': {
+    title: 'Engage', eyebrow: 'TAKE PART', heading: 'Be part of the conversation.',
+    intro: 'Connect with INSAT through research, journal contributions, focused collections, and community enquiries.',
+    cards: [['Contribute research', 'Find guidance for authors and contact the editorial office about a manuscript.', 'For authors', '/for-authors'], ['Propose a special issue', 'Bring researchers together around a timely topic or shared scientific question.', 'Explore special issues', '/special-issues'], ['Get in touch', 'Send the institute a question about the journal, research, or collaboration.', 'Contact INSAT', '/contact']],
+  },
+  '/announcements': {
+    title: 'Announcements', eyebrow: 'NEWS FROM INSAT', heading: 'Updates from the journal.',
+    intro: 'Find publication updates, calls for papers, and notices from the INSAT editorial office.',
+    cards: [['Call for papers', 'INSAT welcomes original research, reviews, short communications, and case studies across its multidisciplinary scope.', 'Author information', '/for-authors'], ['Special issue proposals', 'Researchers and guest editors can share proposals for focused, interdisciplinary collections.', 'Proposal information', '/special-issues'], ['Journal archive', 'Browse published issues and article records from the INSAT journal.', 'Browse journals', '/journals']],
+  },
+  '/media': {
+    title: 'Media', eyebrow: 'MEDIA & RESOURCES', heading: 'INSAT resources and updates.',
+    intro: 'Access journal resources and contact the institute for media, publication, and communication enquiries.',
+    cards: [['Journal issues', 'Explore published editions and the research recorded in the archive.', 'Open the archive', '/journals'], ['Institute information', 'Learn about INSAT and its work in natural sciences and applied technology.', 'About INSAT', '/about'], ['Media enquiries', 'Contact the editorial office for questions about journal content and institute information.', 'Contact the office', '/contact']],
+  },
+};
+
+const menuPages = {
+  '/about/organisation': ['The Organisation', 'INSAT is an institute focused on natural sciences and applied technology, bringing research, education, and practical innovation together.'],
+  '/about/mission-vision': ['Mission & Vision', 'INSAT works to advance scientific knowledge and innovation through interdisciplinary research, education, and solutions to shared challenges.'],
+  '/about/centers': ['Centers', 'INSAT centers connect expertise, facilities, and collaborators around research and applied technology priorities.'],
+  '/research/thrust-areas': ['Thrust Areas', 'INSAT research explores sustainability, energy conversion, waste management, environmental science, and advanced technologies.'],
+  '/research/facilities': ['Facilities', 'Research facilities support practical experimentation, interdisciplinary projects, training, and collaboration.'],
+  '/research/publications': ['Publications', 'Explore research outputs from INSAT, including journal articles, reviews, reports, books, and proceedings.'],
+  '/research/publication-ethics': ['Publication Ethics and Publication Malpractice', 'INSAT expects integrity, transparency, responsible authorship, fair review, and corrections when the scholarly record needs attention.'],
+  '/research/books-proceedings': ['Books / Proceedings', 'INSAT shares scholarly books and proceedings that document research, conferences, and applied work.'],
+  '/people/advisory-committee': ['International Advisory Committee', 'The international advisory community offers guidance and perspective across the institute’s research and publication activities.'],
+  '/people/researchers': ['Researchers', 'INSAT researchers work across natural sciences, applied technology, sustainability, and interdisciplinary innovation.'],
+  '/people/researcher-home-page': ['Researcher Home Page', 'Find researcher profiles, areas of interest, and ways to connect with the INSAT research community.'],
+  '/people/students': ['Students', 'INSAT encourages students to build scientific knowledge through hands-on learning, research, and collaboration.'],
+  '/people/alumni': ['Alumni', 'INSAT alumni carry their experience into research, education, industry, and community work.'],
+  '/journals/natural-sciences-applied-technology': ['Natural Sciences and Applied Technology', 'A peer-reviewed, open access journal published by the Institute of Natural Sciences and Applied Technology.'],
+  '/journals/reviews-reports': ['Reviews and Reports', 'Read review articles and reports that bring evidence, emerging topics, and applied research into focus.'],
+  '/journals/reviews-reports-issues': ['Reviews and Reports Issues', 'Browse collected editions of Reviews and Reports and explore their published contributions.'],
+  '/engage/careers': ['Careers', 'Explore opportunities to contribute to research, education, and the institute’s technology movement.'],
+  '/engage/collaborators': ['Collaborators', 'INSAT welcomes collaboration with researchers, institutions, industry, and communities on shared challenges.'],
+  '/engage/partners': ['Partners', 'Partnerships connect INSAT with schools, universities, organizations, and industry for research and outreach.'],
+  '/engage/sponsors': ['Sponsors', 'Sponsors can support research, education, and outreach initiatives that contribute to sustainable development.'],
+  '/announcements/news': ['News', 'Read news and updates from INSAT, its research community, and journal activities.'],
+  '/announcements/events': ['Events', 'Find talks, workshops, conferences, and outreach activities connected with science and technology.'],
+  '/announcements/advertisements': ['Advertisements', 'View notices and opportunities shared by the institute and its academic community.'],
+  '/media/print': ['Print', 'Browse print resources and publications from the Institute of Natural Sciences and Applied Technology.'],
+  '/media/photos': ['Photos', 'Explore photos from INSAT research, events, education, and outreach.'],
+  '/media/video': ['Video', 'Watch videos featuring INSAT initiatives, science communication, and community activities.'],
+};
+
+function InstitutePage({ page }) {
+  return <><InteriorHero eyebrow={page.eyebrow} title={page.title} emphasis="at INSAT." description={page.intro} /><section className="editorial-page institute-page"><div className="editorial-lead"><span className="editorial-index">INSAT / {page.title.toUpperCase()}</span><div><h2>{page.heading}</h2><p>{page.intro}</p></div></div><div className="author-grid">{page.cards.map(([title, description, link, href]) => <article className="author-card" key={title}><span>{page.title.toUpperCase()}</span><h3>{title}</h3><p>{description}</p>{href && <a href={href}>{link} ↗</a>}</article>)}</div></section></>;
+}
+
 function Footer() {
   return <><section className="callout"><div className="callout-index">05 <span>—</span> 26</div><div><div className="eyebrow light-eyebrow"><span className="eyebrow-line" /> CALL FOR PAPERS</div><h2>Have a question worth<br /><em>bringing into focus?</em></h2><p>INSAT welcomes original research, reviews, short communications, and special issue proposals across disciplines.</p><a className="button-light" href="mailto:office.insat@gmail.com?subject=INSAT%20Special%20Issue%20Proposal">Propose a special issue <span>↗</span></a></div><div className="callout-mark" aria-hidden="true"><span>+</span><span>×</span><span>+</span><span>×</span></div></section><section className="contact-strip"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> PUBLISHED BY INSAT</div><h2>Research belongs<br />in the conversation.</h2></div><div className="contact-info"><p>Institute of Natural Sciences and Applied Technology<br />Flat F, 1/55, Bijaygarh, Jadavpur, Kolkata 700032,<br />West Bengal, India</p><a href="mailto:office.insat@gmail.com">office.insat@gmail.com <span>↗</span></a></div><div className="contact-info contact-phone"><span>EDITORIAL OFFICE</span><a href="tel:+917699787147">+91 7699787147</a><a href="tel:+919748547109">+91 9748547109</a></div></section><footer className="site-footer"><a className="footer-brand" href="#top">INS<span>AT</span></a><span>© 2026 Institute of Natural Sciences and Applied Technology</span><a href="https://www.insat-res.in/">insat-res.in ↗</a><a href="/admin">Editorial admin ↗</a></footer></>;
+}
+
+const emptySubmission = { title: '', category: '', abstract: '', keywords: '' };
+
+function toBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return btoa(binary);
+}
+
+function AccountPage() {
+  const [mode, setMode] = useState(() => new URLSearchParams(window.location.search).get('mode') === 'register' ? 'register' : 'login');
+  const [token, setToken] = useState(() => sessionStorage.getItem('insat-user-token') || '');
+  const [user, setUser] = useState(null);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submissions, setSubmissions] = useState([]);
+  const [form, setForm] = useState(emptySubmission);
+  const [file, setFile] = useState(null);
+  const [editingId, setEditingId] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const loadSubmissions = useCallback(async (sessionToken) => {
+    const result = await api('/submissions/mine', { token: sessionToken });
+    setSubmissions(result.submissions);
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    api('/auth/me', { token }).then(({ user: account }) => { setUser(account); return loadSubmissions(token); }).catch(() => {
+      sessionStorage.removeItem('insat-user-token'); setToken(''); setUser(null);
+      setError('Account services are unavailable. Please try again when the journal API is online.');
+    });
+  }, [token, loadSubmissions]);
+
+  const authenticate = async (event) => {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await api(`/auth/${mode}`, { method: 'POST', body: JSON.stringify({ name, email, password }) });
+      sessionStorage.setItem('insat-user-token', result.token); setToken(result.token); setUser(result.user); setPassword('');
+      await loadSubmissions(result.token);
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  };
+
+  const startEdit = (submission) => {
+    setEditingId(submission.id);
+    setForm({ title: submission.title, category: submission.category, abstract: submission.abstract, keywords: submission.keywords || '' });
+    setFile(null); setError(''); setNotice(''); window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const resetSubmissionForm = () => { setEditingId(''); setForm(emptySubmission); setFile(null); setError(''); setNotice(''); };
+
+  const saveSubmission = async (event) => {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      const payload = { ...form };
+      if (file) payload.file = { name: file.name, contentType: file.type, data: toBase64(await file.arrayBuffer()) };
+      const result = await api(editingId ? `/submissions/${editingId}` : '/submissions', {
+        method: editingId ? 'PUT' : 'POST', token, body: JSON.stringify(payload),
+      });
+      setNotice(result.message); resetSubmissionForm(); await loadSubmissions(token);
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  };
+
+  const downloadFile = async (submission) => {
+    setError('');
+    try {
+      const response = await fetch(`/api/submissions/${submission.id}/file`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Could not download this manuscript.');
+      const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a');
+      link.href = url; link.download = submission.attachment.name; link.click(); URL.revokeObjectURL(url);
+    } catch (requestError) { setError(requestError.message); }
+  };
+
+  const logout = async () => {
+    try { await api('/auth/logout', { method: 'POST', token }); } catch { /* Clear the local session even if the API is offline. */ }
+    sessionStorage.removeItem('insat-user-token'); setToken(''); setUser(null); setSubmissions([]); resetSubmissionForm(); setNotice('You are logged out.');
+  };
+
+  return <><InteriorHero eyebrow="INSAT AUTHOR ACCOUNT" title={user ? `Welcome, ${user.name.split(' ')[0]}` : mode === 'register' ? 'Create your' : 'Log in to your'} emphasis={user ? 'author desk.' : 'author account.'} description="Published journal issues remain open to everyone. Author accounts let you submit manuscripts and manage your own submissions." /><section className="account-page">{!user ? <form className="account-card" onSubmit={authenticate}><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" />{mode === 'register' ? 'NEW AUTHOR' : 'AUTHOR ACCESS'}</div><h2>{mode === 'register' ? 'Create an account' : 'Welcome back.'}</h2><p className="account-help">{mode === 'register' ? 'Register to send a manuscript to the INSAT editorial office and track your submission.' : 'Log in to manage manuscripts you have submitted to INSAT.'}</p>{mode === 'register' && <label>Full name<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required maxLength={120} /></label>}<label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required maxLength={254} /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} minLength={mode === 'register' ? 12 : undefined} maxLength={128} required />{mode === 'register' && <small>Use at least 12 characters.</small>}</label>{error && <div className="account-error" role="alert">{error}</div>}<button className="admin-primary" disabled={busy}>{busy ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Log in'}</button><p className="account-switch">{mode === 'register' ? 'Already registered?' : 'New to INSAT?'} <button type="button" onClick={() => { setMode(mode === 'register' ? 'login' : 'register'); setError(''); }}>{mode === 'register' ? 'Log in' : 'Create an account'}</button></p><p className="account-security">Your manuscript is private to you and the editorial team. Uploaded files may be PDF, DOC, or DOCX up to 5 MB.</p></form> : <div className="account-dashboard"><div className="account-dashboard-head"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" />AUTHOR DESK</div><h2>Your submissions</h2><p>Update your manuscript details or replace its file while it is open for review.</p></div><button className="admin-secondary" onClick={logout}>Log out</button></div><div className="account-layout"><form className="account-card submission-form" onSubmit={saveSubmission}><h3>{editingId ? 'Edit your submission' : 'Submit a manuscript'}</h3><label>Manuscript title<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required maxLength={300} /></label><label>Research area<input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} placeholder="For example, environmental science" required maxLength={120} /></label><label>Abstract<textarea rows="7" value={form.abstract} onChange={(event) => setForm({ ...form, abstract: event.target.value })} required maxLength={12000} /></label><label>Keywords<input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="Separate keywords with commas" maxLength={1000} /></label><label>Manuscript file {editingId && <span>(leave empty to keep the current file)</span>}<input type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setFile(event.target.files?.[0] || null)} required={!editingId} /></label>{error && <div className="account-error" role="alert">{error}</div>}{notice && <div className="admin-notice" role="status">{notice}</div>}<div className="admin-actions"><button className="admin-primary" disabled={busy}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Submit for review'}</button>{editingId && <button className="admin-secondary" type="button" onClick={resetSubmissionForm}>Cancel</button>}</div><p className="account-security">Submitting sends your manuscript to INSAT’s editorial office for review. It is not published automatically. You can edit open submissions at any time.</p></form><section className="submission-list"><h3>Manuscript history</h3>{submissions.length ? submissions.map((submission) => <article className="submission-item" key={submission.id}><div className="submission-item-head"><span className={`submission-status status-${submission.status}`}>{submission.status.replaceAll('_', ' ')}</span><small>Updated {new Date(submission.updatedAt).toLocaleDateString()}</small></div><h4>{submission.title}</h4><p>{submission.category} · {submission.attachment.name}</p><div className="submission-actions"><button type="button" onClick={() => downloadFile(submission)}>Download file ↓</button>{!['accepted', 'rejected'].includes(submission.status) && <button type="button" onClick={() => startEdit(submission)}>Edit submission ↗</button>}</div></article>) : <div className="empty-state"><h3>No submissions yet</h3><p>Your manuscripts will appear here after you submit them.</p></div>}</section></div></div>}</section></>;
+}
+
+function AdminSubmissionQueue() {
+  const [token] = useState(() => sessionStorage.getItem('insat-admin-token') || '');
+  const [submissions, setSubmissions] = useState([]);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState('');
+  const load = useCallback(async () => {
+    const result = await api('/admin/submissions', { token });
+    setSubmissions(result.submissions);
+  }, [token]);
+  useEffect(() => { if (token) load().catch((requestError) => setError(requestError.message)); }, [token, load]);
+  const setStatus = async (submission, status) => {
+    setBusyId(submission.id); setError('');
+    try {
+      await api(`/admin/submissions/${submission.id}/status`, { method: 'PUT', body: JSON.stringify({ status }), token });
+      setSubmissions((current) => current.map((item) => item.id === submission.id ? { ...item, status } : item));
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusyId(''); }
+  };
+  const download = async (submission) => {
+    try {
+      const response = await fetch(`/api/admin/submissions/${submission.id}/file`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Could not download this manuscript.');
+      const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = url; link.download = submission.attachment.name; link.click(); URL.revokeObjectURL(url);
+    } catch (requestError) { setError(requestError.message); }
+  };
+  if (!token) return <><Header /><main className="admin-page"><section className="admin-login"><h2>Editorial access required</h2><p>Sign in to the editorial issue manager first, then open the submission inbox.</p><a className="admin-primary" href="/admin">Go to editorial login</a></section></main><Footer /></>;
+  return <><Header /><main className="admin-page"><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> INSAT EDITORIAL OFFICE</div><div className="admin-heading"><div><h1>Submission <em>inbox.</em></h1><p>Private manuscripts sent by registered authors.</p></div><a className="admin-secondary" href="/admin">Issue management</a></div>{error && <div className="admin-error" role="alert">{error}</div>}<section className="submission-list editorial-submission-list">{submissions.length ? submissions.map((submission) => <article className="submission-item" key={submission.id}><div className="submission-item-head"><span className={`submission-status status-${submission.status}`}>{submission.status.replaceAll('_', ' ')}</span><small>Submitted {new Date(submission.submittedAt).toLocaleDateString()}</small></div><h4>{submission.title}</h4><p>{submission.category} · {submission.author?.name} · {submission.author?.email}</p><details><summary>Read abstract</summary><p>{submission.abstract}</p>{submission.keywords && <p>Keywords: {submission.keywords}</p>}</details><div className="submission-actions"><button type="button" onClick={() => download(submission)}>Download manuscript ↓</button><label>Review status<select disabled={busyId === submission.id} value={submission.status} onChange={(event) => setStatus(submission, event.target.value)}><option value="submitted">Submitted</option><option value="in_review">In review</option><option value="revision_requested">Revision requested</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option></select></label></div></article>) : !error && <div className="empty-state"><h3>No manuscripts yet</h3><p>Author submissions will appear here.</p></div>}</section></main><Footer /></>;
 }
 
 const emptyIssue = { volume: '', year: new Date().getFullYear(), type: 'regular', date: '', publishedAt: '', period: '', cover: 'cover-green', title: '', subtitle: '', descriptor: '', articles: [] };
@@ -216,21 +404,33 @@ function AdminPanel() {
 
   const logout = () => { sessionStorage.removeItem('insat-admin-token'); setToken(''); setAuthenticated(false); setIssues([]); resetForm(); };
 
-  return <><Header /><main className="admin-page"><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> INSAT EDITORIAL OFFICE</div><div className="admin-heading"><div><h1>Issue <em>management.</em></h1><p>Create and update the issue archive and its article records.</p></div>{authenticated && <button className="admin-secondary" onClick={logout}>Sign out</button>}</div>{!authenticated ? <form className="admin-login" onSubmit={login}><h2>Editorial access</h2><p>Enter the admin token configured for this journal.</p><label>Admin token<input type="password" autoComplete="current-password" value={token} onChange={(event) => setToken(event.target.value)} required /></label>{error && <div className="admin-error" role="alert">{error}</div>}<button className="admin-primary" disabled={busy}>{busy ? 'Checking…' : 'Sign in'}</button><a href="/">← Return to issue archive</a></form> : <div className="admin-layout"><form className="admin-form" onSubmit={saveIssue}><div className="admin-form-heading"><h2>{editingSlug ? 'Edit issue' : 'Create an issue'}</h2>{editingSlug && <span>{editingSlug}</span>}</div><div className="admin-grid"><label>Volume<input value={form.volume || ''} onChange={(event) => setForm({ ...form, volume: event.target.value })} placeholder="Vol. 4 · Issue 1" required /></label><label>Year<input type="number" min="2000" max="2100" value={form.year || ''} onChange={(event) => setForm({ ...form, year: event.target.value })} required /></label><label>Type<select value={form.type || 'regular'} onChange={(event) => setForm({ ...form, type: event.target.value })}><option value="regular">Regular issue</option><option value="special">Special issue</option></select></label><label>Release date<input value={form.date || ''} onChange={(event) => setForm({ ...form, date: event.target.value })} placeholder="March 30, 2027" required /></label><label>Publication date for sorting<input type="date" value={form.publishedAt || ''} onChange={(event) => setForm({ ...form, publishedAt: event.target.value })} /></label><label>Issue period<input value={form.period || ''} onChange={(event) => setForm({ ...form, period: event.target.value })} placeholder="October 2026 — March 2027" required /></label><label>Issue title<input value={form.title || ''} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="The March edition" required /></label><label>Subtitle<input value={form.subtitle || ''} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} placeholder="Special theme, if applicable" /></label><label className="admin-wide">Editor or issue description<textarea rows="2" value={form.descriptor || ''} onChange={(event) => setForm({ ...form, descriptor: event.target.value })} placeholder="Guest editor details or issue description" /></label><label className="admin-wide">Article records <span>JSON array: category, title, authors, pages (optional)</span><textarea className="json-editor" rows="13" value={articleText} onChange={(event) => setArticleText(event.target.value)} spellCheck="false" /></label></div>{error && <div className="admin-error" role="alert">{error}</div>}{notice && <div className="admin-notice" role="status">{notice}</div>}<div className="admin-actions"><button className="admin-primary" disabled={busy}>{busy ? 'Saving…' : editingSlug ? 'Save changes' : 'Create issue'}</button><button className="admin-secondary" type="button" onClick={resetForm}>New issue</button></div></form><section className="admin-issues"><div className="admin-list-heading"><h2>Published issues</h2><span>{issues.length} records</span></div>{issues.map((issue) => <article className="admin-issue-row" key={issue.slug}><div><strong>{issue.volume} · {issue.year}</strong><span>{issue.title}</span><small>{issue.articles?.length || 0} articles · {issue.type}</small></div><div><button onClick={() => editIssue(issue)}>Edit</button><button className="admin-delete" onClick={() => deleteIssue(issue)}>Delete</button></div></article>)}</section></div>}</main><Footer /></>;
+  return <><Header /><main className="admin-page"><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> INSAT EDITORIAL OFFICE</div><div className="admin-heading"><div><h1>Issue <em>management.</em></h1><p>Create and update the issue archive and its article records.</p></div>{authenticated && <div className="admin-panel-actions"><a className="admin-secondary" href="/admin/submissions">Submission inbox ↗</a><button className="admin-secondary" onClick={logout}>Sign out</button></div>}</div>{!authenticated ? <form className="admin-login" onSubmit={login}><h2>Editorial access</h2><p>Enter the admin token configured for this journal.</p><label>Admin token<input type="password" autoComplete="current-password" value={token} onChange={(event) => setToken(event.target.value)} required /></label>{error && <div className="admin-error" role="alert">{error}</div>}<button className="admin-primary" disabled={busy}>{busy ? 'Checking…' : 'Sign in'}</button><a href="/">← Return to issue archive</a></form> : <div className="admin-layout"><form className="admin-form" onSubmit={saveIssue}><div className="admin-form-heading"><h2>{editingSlug ? 'Edit issue' : 'Create an issue'}</h2>{editingSlug && <span>{editingSlug}</span>}</div><div className="admin-grid"><label>Volume<input value={form.volume || ''} onChange={(event) => setForm({ ...form, volume: event.target.value })} placeholder="Vol. 4 · Issue 1" required /></label><label>Year<input type="number" min="2000" max="2100" value={form.year || ''} onChange={(event) => setForm({ ...form, year: event.target.value })} required /></label><label>Type<select value={form.type || 'regular'} onChange={(event) => setForm({ ...form, type: event.target.value })}><option value="regular">Regular issue</option><option value="special">Special issue</option></select></label><label>Release date<input value={form.date || ''} onChange={(event) => setForm({ ...form, date: event.target.value })} placeholder="March 30, 2027" required /></label><label>Publication date for sorting<input type="date" value={form.publishedAt || ''} onChange={(event) => setForm({ ...form, publishedAt: event.target.value })} /></label><label>Issue period<input value={form.period || ''} onChange={(event) => setForm({ ...form, period: event.target.value })} placeholder="October 2026 — March 2027" required /></label><label>Issue title<input value={form.title || ''} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="The March edition" required /></label><label>Subtitle<input value={form.subtitle || ''} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} placeholder="Special theme, if applicable" /></label><label className="admin-wide">Editor or issue description<textarea rows="2" value={form.descriptor || ''} onChange={(event) => setForm({ ...form, descriptor: event.target.value })} placeholder="Guest editor details or issue description" /></label><label className="admin-wide">Article records <span>JSON array: category, title, authors, pages (optional)</span><textarea className="json-editor" rows="13" value={articleText} onChange={(event) => setArticleText(event.target.value)} spellCheck="false" /></label></div>{error && <div className="admin-error" role="alert">{error}</div>}{notice && <div className="admin-notice" role="status">{notice}</div>}<div className="admin-actions"><button className="admin-primary" disabled={busy}>{busy ? 'Saving…' : editingSlug ? 'Save changes' : 'Create issue'}</button><button className="admin-secondary" type="button" onClick={resetForm}>New issue</button></div></form><section className="admin-issues"><div className="admin-list-heading"><h2>Published issues</h2><span>{issues.length} records</span></div>{issues.map((issue) => <article className="admin-issue-row" key={issue.slug}><div><strong>{issue.volume} · {issue.year}</strong><span>{issue.title}</span><small>{issue.articles?.length || 0} articles · {issue.type}</small></div><div><button onClick={() => editIssue(issue)}>Edit</button><button className="admin-delete" onClick={() => deleteIssue(issue)}>Delete</button></div></article>)}</section></div>}</main><Footer /></>;
 }
 
 export default function App() {
   const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
-  const pageTitles = { '/': 'Natural Sciences and Applied Technology', '/about': 'About the journal | INSAT', '/for-authors': 'For authors | INSAT', '/issues': 'Issues | INSAT', '/special-issues': 'Special issues | INSAT', '/contact': 'Contact | INSAT', '/admin': 'Editorial admin | INSAT' };
-  useEffect(() => { document.title = pageTitles[currentPath] || pageTitles['/']; }, [currentPath]);
+  const pageTitles = { '/': 'Natural Sciences and Applied Technology', '/about': 'About | INSAT', '/research': 'Research | INSAT', '/people': 'People | INSAT', '/journals': 'Journals | INSAT', '/for-authors': 'For authors | INSAT', '/issues': 'Issues | INSAT', '/special-issues': 'Special issues | INSAT', '/engage': 'Engage | INSAT', '/announcements': 'Announcements | INSAT', '/media': 'Media | INSAT', '/contact': 'Contact | INSAT', '/account': 'Author account | INSAT', '/admin': 'Editorial admin | INSAT', '/admin/submissions': 'Submission inbox | INSAT' };
+  useEffect(() => { document.title = menuPages[currentPath] ? `${menuPages[currentPath][0]} | INSAT` : pageTitles[currentPath] || pageTitles['/']; }, [currentPath]);
+  if (currentPath === '/admin/submissions') return <AdminSubmissionQueue />;
   if (window.location.pathname.startsWith('/admin')) return <AdminPanel />;
+  if (currentPath === '/account') return <><Header /><main id="top"><AccountPage /></main><Footer /></>;
   if (window.location.pathname.startsWith('/article/')) return <><Header /><ArticlePage /><Footer /></>;
+  if (menuPages[currentPath]) {
+    const [title, description] = menuPages[currentPath];
+    return <><Header /><main id="top"><InteriorHero eyebrow="INSAT / EXPLORE" title={title} emphasis="at INSAT." description={description} /><section className="editorial-page institute-page"><div className="editorial-lead"><span className="editorial-index">INSAT / {title.toUpperCase()}</span><div><h2>{title}</h2><p>{description}</p><p>For more information, contact the Institute of Natural Sciences and Applied Technology or explore the related INSAT pages.</p></div></div><div className="author-grid"><article className="author-card"><span>LEARN MORE</span><h3>Explore INSAT</h3><p>Discover research, publications, people, and opportunities across the institute.</p><a href="/research">Research at INSAT ↗</a></article><article className="author-card"><span>JOURNALS</span><h3>Read the archive</h3><p>Browse the Natural Sciences and Applied Technology journal and published issues.</p><a href="/issues">Browse journal issues ↗</a></article><article className="author-card"><span>CONTACT</span><h3>Connect with us</h3><p>Send questions and enquiries to the INSAT office in Kolkata.</p><a href="/contact">Contact INSAT ↗</a></article></div></section></main><Footer /></>;
+  }
   let page;
   switch (currentPath) {
     case '/about': page = <AboutPage />; break;
-    case '/for-authors': page = <AuthorsPage />; break;
+    case '/research': page = <InstitutePage page={institutePages['/research']} />; break;
+    case '/people': page = <InstitutePage page={institutePages['/people']} />; break;
+    case '/journals':
     case '/issues': page = <><InteriorHero eyebrow="THE JOURNAL ARCHIVE" title="Every issue, in" emphasis="one place." description="Search article titles and authors, browse by year, and explore every edition in the archive." /><IssueArchive /></>; break;
+    case '/for-authors': page = <AuthorsPage />; break;
     case '/special-issues': page = <SpecialIssuesPage />; break;
+    case '/engage': page = <InstitutePage page={institutePages['/engage']} />; break;
+    case '/announcements': page = <InstitutePage page={institutePages['/announcements']} />; break;
+    case '/media': page = <InstitutePage page={institutePages['/media']} />; break;
     case '/contact': page = <ContactPage />; break;
     default: page = <HomePage />;
   }

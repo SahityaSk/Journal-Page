@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import Issue from './models/Issue.js';
+import Submission from './models/Submission.js';
 
 const router = Router();
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -116,6 +117,49 @@ router.delete('/admin/issues/:slug', adminOnly, async (req, res, next) => {
     const issue = await Issue.findOneAndDelete({ slug: req.params.slug });
     if (!issue) return res.status(404).json({ message: 'Issue not found.' });
     res.json({ message: 'Issue deleted.' });
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/submissions', adminOnly, async (_req, res, next) => {
+  try {
+    const submissions = await Submission.find().sort({ updatedAt: -1 }).populate('owner', 'name email');
+    res.json({ submissions: submissions.map((submission) => ({
+      id: submission._id,
+      title: submission.title,
+      category: submission.category,
+      abstract: submission.abstract,
+      keywords: submission.keywords,
+      status: submission.status,
+      submittedAt: submission.submittedAt,
+      updatedAt: submission.updatedAt,
+      attachment: { name: submission.attachment.name, contentType: submission.attachment.contentType, size: submission.attachment.size },
+      author: submission.owner ? { name: submission.owner.name, email: submission.owner.email } : null,
+    })) });
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/submissions/:id/file', adminOnly, async (req, res, next) => {
+  try {
+    const submission = await Submission.findById(req.params.id).select('+attachment.data');
+    if (!submission) return res.status(404).json({ message: 'Submission not found.' });
+    res.set({
+      'Content-Type': submission.attachment.contentType,
+      'Content-Length': submission.attachment.size,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(submission.attachment.name)}`,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-store',
+    });
+    res.send(submission.attachment.data);
+  } catch (error) { next(error); }
+});
+
+router.put('/admin/submissions/:id/status', adminOnly, async (req, res, next) => {
+  const allowedStatuses = ['submitted', 'in_review', 'revision_requested', 'accepted', 'rejected'];
+  if (!allowedStatuses.includes(req.body?.status)) return res.status(400).json({ message: 'Choose a valid review status.' });
+  try {
+    const submission = await Submission.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true, runValidators: true });
+    if (!submission) return res.status(404).json({ message: 'Submission not found.' });
+    res.json({ status: submission.status });
   } catch (error) { next(error); }
 });
 

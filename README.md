@@ -1,6 +1,6 @@
 # Natural Sciences and Applied Technology journal archive
 
-The INSAT issue archive uses the MERN stack: MongoDB stores journal issues and article records, Express and Node.js provide the API, and React renders the public archive and editorial admin.
+The INSAT issue archive uses the MERN stack: MongoDB stores journal issues, article records, author accounts, and private manuscript submissions; Express and Node.js provide the API; React renders the public archive and editorial tools.
 
 ## Run locally
 
@@ -15,6 +15,12 @@ On first server startup, the archive inserts the existing INSAT issues and their
 ## Editorial administration
 
 Open `/admin` and sign in with `ADMIN_TOKEN`. Editors can create, edit, and delete issues and their article records. Article records use JSON with `category`, `title`, `authors`, and an optional `pages` value. Admin requests require the token as a bearer credential; the public issue endpoints are read-only.
+
+## Author accounts and manuscript submissions
+
+Open `/account` to register or log in. New passwords must be at least 12 characters. Registered authors can upload PDF, DOC, or DOCX manuscripts up to 5 MB, edit their submission details or replace the file, and download their own submissions. Uploaded manuscripts remain private and are not published automatically. Readers can continue to read the open-access journal without an account. Editors can review submissions and update their status at `/admin/submissions` using the editorial token.
+
+Account and submission features require MongoDB to be running and `MONGODB_URI` configured. This build does not yet include email verification or password recovery; configure those flows before using self-service accounts on a public production deployment.
 
 ## Production
 
