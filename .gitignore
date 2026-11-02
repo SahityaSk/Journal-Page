@@ -1,5 +1,9 @@
 node_modules/
 client/dist/
 .env
+.env.ojs
+ojs/config.inc.php
+ojs/files/
+ojs/public/
 .DS_Store
 npm-debug.log*

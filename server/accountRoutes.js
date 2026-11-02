@@ -2,8 +2,7 @@ import { Router } from 'express';
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import path from 'node:path';
-import User from './models/User.js';
-import Submission from './models/Submission.js';
+import pool from './db.js';
 
 const router = Router();
 const scrypt = promisify(scryptCallback);
@@ -13,19 +12,17 @@ const allowedTypes = new Set(['application/pdf', 'application/msword', 'applicat
 const authAttempts = new Map();
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
-const publicUser = (user) => ({ id: user._id, name: user.name, email: user.email });
-const publicSubmission = (submission) => ({
-  id: submission._id,
-  title: submission.title,
-  category: submission.category,
-  abstract: submission.abstract,
-  keywords: submission.keywords,
-  status: submission.status,
-  submittedAt: submission.submittedAt,
-  createdAt: submission.createdAt,
-  updatedAt: submission.updatedAt,
-  attachment: submission.attachment ? { name: submission.attachment.name, contentType: submission.attachment.contentType, size: submission.attachment.size } : null,
-});
+const publicUser = (user) => ({ id: String(user.id), name: user.name, email: user.email });
+const mysqlDate = (date) => date.toISOString().slice(0, 19).replace('T', ' ');
+
+function publicSubmission(submission) {
+  return {
+    id: String(submission.id), title: submission.title, category: submission.category, abstract: submission.abstract,
+    keywords: submission.keywords, status: submission.status, submittedAt: submission.submitted_at || submission.submittedAt,
+    createdAt: submission.created_at || submission.createdAt, updatedAt: submission.updated_at || submission.updatedAt,
+    attachment: submission.attachment_name ? { name: submission.attachment_name, contentType: submission.attachment_type, size: submission.attachment_size } : null,
+  };
+}
 
 function limitAuthAttempts(req, res, next) {
   const now = Date.now();
@@ -41,12 +38,11 @@ function limitAuthAttempts(req, res, next) {
   next();
 }
 
-async function issueSession(user) {
+async function issueSession(userId) {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  user.sessions = user.sessions.filter((session) => session.expiresAt > new Date());
-  user.sessions.push({ tokenHash: hashToken(token), expiresAt });
-  await user.save();
+  await pool.execute('DELETE FROM sessions WHERE user_id=? AND expires_at<=UTC_TIMESTAMP()', [userId]);
+  await pool.execute('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [userId, hashToken(token), mysqlDate(expiresAt)]);
   return { token, expiresAt };
 }
 
@@ -54,10 +50,11 @@ export async function requireUser(req, res, next) {
   try {
     const token = req.get('authorization')?.replace(/^Bearer\s+/i, '');
     if (!token || token.length > 200) return res.status(401).json({ message: 'Please log in to continue.' });
-    const user = await User.findOne({ sessions: { $elemMatch: { tokenHash: hashToken(token), expiresAt: { $gt: new Date() } } } });
-    if (!user) return res.status(401).json({ message: 'Your session expired. Please log in again.' });
-    req.user = user;
-    req.sessionTokenHash = hashToken(token);
+    const [rows] = await pool.execute(`SELECT u.id, u.name, u.email, s.token_hash
+      FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP() LIMIT 1`, [hashToken(token)]);
+    if (!rows[0]) return res.status(401).json({ message: 'Your session expired. Please log in again.' });
+    req.user = rows[0];
+    req.sessionTokenHash = rows[0].token_hash;
     next();
   } catch (error) { next(error); }
 }
@@ -91,7 +88,12 @@ function validateSubmission(input, needsFile = false) {
 
 function attachmentFrom(input) {
   const name = path.basename(input.file.name).replace(/[\r\n"\\]/g, '_');
-  return { name, contentType: input.file.contentType, size: Buffer.byteLength(input.file.data, 'base64'), data: Buffer.from(input.file.data, 'base64') };
+  const data = Buffer.from(input.file.data, 'base64');
+  return { name, type: input.file.contentType, size: data.length, data };
+}
+
+function submissionFields(input) {
+  return [input.title.trim(), input.category.trim(), input.abstract.trim(), (input.keywords || '').trim()];
 }
 
 router.post('/auth/register', limitAuthAttempts, async (req, res, next) => {
@@ -101,11 +103,13 @@ router.post('/auth/register', limitAuthAttempts, async (req, res, next) => {
     const email = req.body.email.trim().toLowerCase();
     const salt = randomBytes(16).toString('hex');
     const derived = await scrypt(req.body.password, salt, 64);
-    const user = await User.create({ name: req.body.name.trim(), email, passwordHash: `${salt}:${derived.toString('hex')}` });
-    const session = await issueSession(user);
+    const [result] = await pool.execute('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
+      [req.body.name.trim(), email, `${salt}:${derived.toString('hex')}`]);
+    const user = { id: result.insertId, name: req.body.name.trim(), email };
+    const session = await issueSession(user.id);
     res.status(201).json({ user: publicUser(user), ...session });
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ message: 'An account already exists for that email. Log in instead.' });
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'An account already exists for that email. Log in instead.' });
     next(error);
   }
 });
@@ -113,13 +117,14 @@ router.post('/auth/register', limitAuthAttempts, async (req, res, next) => {
 router.post('/auth/login', limitAuthAttempts, async (req, res, next) => {
   if (typeof req.body?.email !== 'string' || typeof req.body?.password !== 'string') return res.status(400).json({ message: 'Enter your email and password.' });
   try {
-    const user = await User.findOne({ email: req.body.email.trim().toLowerCase() }).select('+passwordHash');
+    const [rows] = await pool.execute('SELECT id, name, email, password_hash FROM users WHERE email=? LIMIT 1', [req.body.email.trim().toLowerCase()]);
+    const user = rows[0];
     if (!user) return res.status(401).json({ message: 'Email or password is incorrect.' });
-    const [salt, storedHex] = user.passwordHash.split(':');
+    const [salt, storedHex] = user.password_hash.split(':');
     const storedHash = Buffer.from(storedHex || '', 'hex');
     const suppliedHash = await scrypt(req.body.password, salt, 64);
     if (storedHash.length !== suppliedHash.length || !timingSafeEqual(storedHash, suppliedHash)) return res.status(401).json({ message: 'Email or password is incorrect.' });
-    const session = await issueSession(user);
+    const session = await issueSession(user.id);
     res.json({ user: publicUser(user), ...session });
   } catch (error) { next(error); }
 });
@@ -128,15 +133,15 @@ router.get('/auth/me', requireUser, (req, res) => res.json({ user: publicUser(re
 
 router.post('/auth/logout', requireUser, async (req, res, next) => {
   try {
-    req.user.sessions = req.user.sessions.filter((session) => session.tokenHash !== req.sessionTokenHash);
-    await req.user.save();
+    await pool.execute('DELETE FROM sessions WHERE token_hash=?', [req.sessionTokenHash]);
     res.json({ message: 'You are logged out.' });
   } catch (error) { next(error); }
 });
 
 router.get('/submissions/mine', requireUser, async (req, res, next) => {
   try {
-    const submissions = await Submission.find({ owner: req.user._id }).sort({ updatedAt: -1 });
+    const [submissions] = await pool.execute(`SELECT id, title, category, abstract, keywords, status, submitted_at, created_at, updated_at,
+      attachment_name, attachment_type, attachment_size FROM submissions WHERE owner_id=? ORDER BY updated_at DESC`, [req.user.id]);
     res.json({ submissions: submissions.map(publicSubmission) });
   } catch (error) { next(error); }
 });
@@ -145,12 +150,15 @@ router.post('/submissions', requireUser, async (req, res, next) => {
   const validation = validateSubmission(req.body, true);
   if (validation) return res.status(400).json({ message: validation });
   try {
-    const submission = await Submission.create({
-      owner: req.user._id,
-      title: req.body.title.trim(), category: req.body.category.trim(), abstract: req.body.abstract.trim(),
-      keywords: (req.body.keywords || '').trim(), attachment: attachmentFrom(req.body), status: 'submitted',
-    });
-    res.status(201).json({ submission: publicSubmission(submission), message: 'Your manuscript was sent to the editorial office.' });
+    const attachment = attachmentFrom(req.body);
+    const fields = submissionFields(req.body);
+    const [result] = await pool.execute(`INSERT INTO submissions
+      (owner_id, title, category, abstract, keywords, attachment_name, attachment_type, attachment_size, attachment_data, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
+    [req.user.id, ...fields, attachment.name, attachment.type, attachment.size, attachment.data]);
+    const [rows] = await pool.execute(`SELECT id, title, category, abstract, keywords, status, submitted_at, created_at, updated_at,
+      attachment_name, attachment_type, attachment_size FROM submissions WHERE id=?`, [result.insertId]);
+    res.status(201).json({ submission: publicSubmission(rows[0]), message: 'Your manuscript was sent to the editorial office.' });
   } catch (error) { next(error); }
 });
 
@@ -158,31 +166,33 @@ router.put('/submissions/:id', requireUser, async (req, res, next) => {
   const validation = validateSubmission(req.body, false);
   if (validation) return res.status(400).json({ message: validation });
   try {
-    const submission = await Submission.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!submission) return res.status(404).json({ message: 'Submission not found.' });
-    if (['accepted', 'rejected'].includes(submission.status)) return res.status(409).json({ message: 'This submission is closed and can no longer be edited.' });
-    submission.title = req.body.title.trim();
-    submission.category = req.body.category.trim();
-    submission.abstract = req.body.abstract.trim();
-    submission.keywords = (req.body.keywords || '').trim();
-    if (req.body.file) submission.attachment = attachmentFrom(req.body);
-    await submission.save();
-    res.json({ submission: publicSubmission(submission), message: 'Your changes were saved.' });
+    const [rows] = await pool.execute('SELECT * FROM submissions WHERE id=? AND owner_id=? LIMIT 1', [req.params.id, req.user.id]);
+    const existing = rows[0];
+    if (!existing) return res.status(404).json({ message: 'Submission not found.' });
+    if (['accepted', 'rejected'].includes(existing.status)) return res.status(409).json({ message: 'This submission is closed and can no longer be edited.' });
+    const fields = submissionFields(req.body);
+    if (req.body.file) {
+      const attachment = attachmentFrom(req.body);
+      await pool.execute(`UPDATE submissions SET title=?, category=?, abstract=?, keywords=?, attachment_name=?, attachment_type=?, attachment_size=?, attachment_data=? WHERE id=? AND owner_id=?`,
+        [...fields, attachment.name, attachment.type, attachment.size, attachment.data, req.params.id, req.user.id]);
+    } else {
+      await pool.execute('UPDATE submissions SET title=?, category=?, abstract=?, keywords=? WHERE id=? AND owner_id=?', [...fields, req.params.id, req.user.id]);
+    }
+    const [updatedRows] = await pool.execute(`SELECT id, title, category, abstract, keywords, status, submitted_at, created_at, updated_at,
+      attachment_name, attachment_type, attachment_size FROM submissions WHERE id=?`, [req.params.id]);
+    res.json({ submission: publicSubmission(updatedRows[0]), message: 'Your changes were saved.' });
   } catch (error) { next(error); }
 });
 
 router.get('/submissions/:id/file', requireUser, async (req, res, next) => {
   try {
-    const submission = await Submission.findOne({ _id: req.params.id, owner: req.user._id }).select('+attachment.data');
+    const [rows] = await pool.execute('SELECT attachment_name, attachment_type, attachment_size, attachment_data FROM submissions WHERE id=? AND owner_id=?', [req.params.id, req.user.id]);
+    const submission = rows[0];
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
-    res.set({
-      'Content-Type': submission.attachment.contentType,
-      'Content-Length': submission.attachment.size,
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(submission.attachment.name)}`,
-      'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'private, no-store',
-    });
-    res.send(submission.attachment.data);
+    res.set({ 'Content-Type': submission.attachment_type, 'Content-Length': submission.attachment_size,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(submission.attachment_name)}`,
+      'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' });
+    res.send(submission.attachment_data);
   } catch (error) { next(error); }
 });
 

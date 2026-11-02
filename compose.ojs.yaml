@@ -1,0 +1,47 @@
+services:
+  app-db:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: insat_journal
+      MARIADB_USER: insat
+      MARIADB_PASSWORD: ${SQL_DB_PASSWORD:?Set SQL_DB_PASSWORD in .env.ojs}
+      MARIADB_ROOT_PASSWORD: ${SQL_DB_ROOT_PASSWORD:?Set SQL_DB_ROOT_PASSWORD in .env.ojs}
+    ports:
+      - "3307:3306"
+    volumes:
+      - app-db-data:/var/lib/mysql
+
+  ojs-db:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ojs
+      MARIADB_USER: ojs
+      MARIADB_PASSWORD: ${OJS_DB_PASSWORD:?Set OJS_DB_PASSWORD in .env.ojs}
+      MARIADB_ROOT_PASSWORD: ${OJS_DB_ROOT_PASSWORD:?Set OJS_DB_ROOT_PASSWORD in .env.ojs}
+    volumes:
+      - ojs-db-data:/var/lib/mysql
+
+  ojs:
+    image: pkpofficial/ojs:3_5_0-4
+    restart: unless-stopped
+    depends_on:
+      - ojs-db
+    ports:
+      - "${OJS_HTTP_PORT:-8081}:80"
+    environment:
+      PKP_TOOL: ojs
+      PKP_DB_DRIVER: mysqli
+      PKP_DB_HOST: ojs-db
+      PKP_DB_NAME: ojs
+      PKP_DB_USER: ojs
+      PKP_DB_PASSWORD: ${OJS_DB_PASSWORD:?Set OJS_DB_PASSWORD in .env.ojs}
+    volumes:
+      - ./ojs/config.inc.php:/var/www/html/config.inc.php
+      - ./ojs/public:/var/www/html/public
+      - ./ojs/files:/var/www/files
+
+volumes:
+  app-db-data:
+  ojs-db-data:

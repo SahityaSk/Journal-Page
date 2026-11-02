@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { timingSafeEqual } from 'node:crypto';
-import Issue from './models/Issue.js';
-import Submission from './models/Submission.js';
+import pool from './db.js';
 
 const router = Router();
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const allowedStatuses = ['submitted', 'in_review', 'revision_requested', 'accepted', 'rejected'];
 
 function adminOnly(req, res, next) {
   const configuredToken = process.env.ADMIN_TOKEN;
@@ -33,133 +32,167 @@ function validateIssue(input) {
 function normalizeIssue(input) {
   const fallbackSlug = `${input.volume}-${input.year}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const slug = String(input.slug || fallbackSlug).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
-  const parsedDate = input.publishedAt ? new Date(input.publishedAt) : new Date(input.date);
+  const dateValue = input.publishedAt ? new Date(input.publishedAt) : new Date(input.date);
+  const publishedAt = Number.isNaN(dateValue.getTime()) ? `${Number(input.year)}-01-01 00:00:00` : dateValue.toISOString().slice(0, 19).replace('T', ' ');
   return {
-    slug,
-    volume: String(input.volume).trim(),
-    year: Number(input.year),
-    type: input.type || 'regular',
-    date: String(input.date).trim(),
-    publishedAt: Number.isNaN(parsedDate.getTime()) ? new Date(Number(input.year), 0, 1) : parsedDate,
-    period: String(input.period).trim(),
-    cover: input.cover || 'cover-green',
-    title: String(input.title).trim(),
-    subtitle: input.subtitle || '',
-    descriptor: input.descriptor || '',
-    articles: input.articles.map((article) => ({
-      category: article.category.trim(), title: article.title.trim(), authors: article.authors.trim(), pages: article.pages || '',
-    })),
+    slug, volume: String(input.volume).trim(), year: Number(input.year), type: input.type || 'regular', date: String(input.date).trim(), publishedAt,
+    period: String(input.period).trim(), cover: input.cover || 'cover-green', title: String(input.title).trim(),
+    subtitle: input.subtitle || '', descriptor: input.descriptor || '',
+    articles: input.articles.map((article) => ({ category: article.category.trim(), title: article.title.trim(), authors: article.authors.trim(), pages: article.pages || '' })),
   };
 }
 
-function handleValidationError(error, res) {
-  if (error.name === 'ValidationError' || error.code === 11000) {
-    const message = error.code === 11000 ? 'An issue with this slug already exists.' : error.message;
-    return res.status(400).json({ message });
-  }
-  return res.status(500).json({ message: 'Could not save the issue.' });
+const mapIssue = (row, articles = []) => ({
+  slug: row.slug, volume: row.volume, year: Number(row.year), type: row.type, date: row.date_text,
+  publishedAt: row.published_at, period: row.period, cover: row.cover, title: row.title,
+  subtitle: row.subtitle, descriptor: row.descriptor,
+  articles: articles.map((article) => ({ _id: String(article.id), category: article.category, title: article.title, authors: article.authors, pages: article.pages })),
+});
+
+async function loadIssues(where = '', values = [], order = 'i.published_at DESC, i.year DESC, i.volume DESC') {
+  const [rows] = await pool.execute(`SELECT i.* FROM issues i ${where} ORDER BY ${order}`, values);
+  if (!rows.length) return [];
+  const placeholders = rows.map(() => '?').join(',');
+  const [articleRows] = await pool.execute(`SELECT * FROM articles WHERE issue_slug IN (${placeholders}) ORDER BY position, id`, rows.map((row) => row.slug));
+  const grouped = new Map(rows.map((row) => [row.slug, []]));
+  for (const article of articleRows) grouped.get(article.issue_slug).push(article);
+  return rows.map((row) => mapIssue(row, grouped.get(row.slug)));
 }
 
-router.get('/health', (_req, res) => res.json({ status: 'ok', database: 'connected' }));
+async function insertArticles(connection, slug, articles) {
+  for (const [position, article] of articles.entries()) {
+    await connection.execute('INSERT INTO articles (issue_slug, position, category, title, authors, pages) VALUES (?, ?, ?, ?, ?, ?)',
+      [slug, position, article.category, article.title, article.authors, article.pages]);
+  }
+}
+
+async function saveIssue(issue, updateSlug = null) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (updateSlug) {
+      const [existingRows] = await connection.execute('SELECT slug FROM issues WHERE slug=? FOR UPDATE', [updateSlug]);
+      if (!existingRows.length) { await connection.rollback(); return null; }
+      await connection.execute('DELETE FROM articles WHERE issue_slug=?', [updateSlug]);
+      const [result] = await connection.execute(
+        `UPDATE issues SET slug=?, volume=?, year=?, type=?, date_text=?, published_at=?, period=?, cover=?, title=?, subtitle=?, descriptor=? WHERE slug=?`,
+        [issue.slug, issue.volume, issue.year, issue.type, issue.date, issue.publishedAt, issue.period, issue.cover, issue.title, issue.subtitle, issue.descriptor, updateSlug],
+      );
+      if (!result.affectedRows && issue.slug !== updateSlug) { await connection.rollback(); return null; }
+    } else {
+      await connection.execute(
+        `INSERT INTO issues (slug, volume, year, type, date_text, published_at, period, cover, title, subtitle, descriptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [issue.slug, issue.volume, issue.year, issue.type, issue.date, issue.publishedAt, issue.period, issue.cover, issue.title, issue.subtitle, issue.descriptor],
+      );
+    }
+    await insertArticles(connection, issue.slug, issue.articles);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally { connection.release(); }
+  return (await loadIssues('WHERE i.slug=?', [issue.slug], 'i.published_at DESC'))[0] || null;
+}
+
+function databaseError(error, res, message = 'Could not save the issue.') {
+  if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ message: 'An issue with this slug already exists.' });
+  console.error(error);
+  return res.status(500).json({ message });
+}
+
+router.get('/health', async (_req, res) => {
+  try { await pool.query('SELECT 1'); res.json({ status: 'ok', database: 'connected' }); }
+  catch { res.status(503).json({ status: 'error', database: 'disconnected' }); }
+});
 
 router.get('/issues', async (req, res, next) => {
   try {
-    const filter = {};
+    const clauses = [];
+    const values = [];
     const year = Number(req.query.year);
-    if (Number.isInteger(year) && year >= 2000 && year <= 2100) filter.year = year;
-    if (['regular', 'special'].includes(req.query.type)) filter.type = req.query.type;
+    if (Number.isInteger(year) && year >= 2000 && year <= 2100) { clauses.push('i.year=?'); values.push(year); }
+    if (['regular', 'special'].includes(req.query.type)) { clauses.push('i.type=?'); values.push(req.query.type); }
     if (typeof req.query.q === 'string' && req.query.q.trim()) {
-      const term = new RegExp(escapeRegex(req.query.q.trim().slice(0, 100)), 'i');
-      filter.$or = [
-        { title: term }, { subtitle: term }, { descriptor: term }, { volume: term },
-        { 'articles.title': term }, { 'articles.authors': term }, { 'articles.category': term },
-      ];
+      const term = req.query.q.trim().slice(0, 100);
+      clauses.push(`(LOCATE(LOWER(?), LOWER(i.title)) > 0 OR LOCATE(LOWER(?), LOWER(i.subtitle)) > 0 OR LOCATE(LOWER(?), LOWER(i.descriptor)) > 0 OR LOCATE(LOWER(?), LOWER(i.volume)) > 0 OR EXISTS (SELECT 1 FROM articles a WHERE a.issue_slug=i.slug AND (LOCATE(LOWER(?), LOWER(a.title)) > 0 OR LOCATE(LOWER(?), LOWER(a.authors)) > 0 OR LOCATE(LOWER(?), LOWER(a.category)) > 0)))`);
+      values.push(term, term, term, term, term, term, term);
     }
-    const issues = await Issue.find(filter).sort({ publishedAt: -1, year: -1, volume: -1 }).lean();
+    const issues = await loadIssues(clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', values);
     res.json({ issues });
   } catch (error) { next(error); }
 });
 
 router.get('/issues/:slug', async (req, res, next) => {
   try {
-    const issue = await Issue.findOne({ slug: req.params.slug }).lean();
+    const issue = (await loadIssues('WHERE i.slug=?', [req.params.slug]))[0];
     if (!issue) return res.status(404).json({ message: 'Issue not found.' });
     res.json({ issue });
   } catch (error) { next(error); }
 });
 
 router.get('/admin/issues', adminOnly, async (_req, res, next) => {
-  try { res.json({ issues: await Issue.find().sort({ publishedAt: -1 }).lean() }); }
+  try { res.json({ issues: await loadIssues('', [], 'i.published_at DESC') }); }
   catch (error) { next(error); }
 });
 
 router.post('/admin/issues', adminOnly, async (req, res) => {
   const validation = validateIssue(req.body);
   if (validation) return res.status(400).json({ message: validation });
-  try {
-    const issue = await Issue.create(normalizeIssue(req.body));
-    res.status(201).json({ issue });
-  } catch (error) { handleValidationError(error, res); }
+  try { res.status(201).json({ issue: await saveIssue(normalizeIssue(req.body)) }); }
+  catch (error) { databaseError(error, res); }
 });
 
 router.put('/admin/issues/:slug', adminOnly, async (req, res) => {
   const validation = validateIssue(req.body);
   if (validation) return res.status(400).json({ message: validation });
   try {
-    const issue = await Issue.findOneAndUpdate({ slug: req.params.slug }, normalizeIssue(req.body), { new: true, runValidators: true });
+    const issue = await saveIssue(normalizeIssue(req.body), req.params.slug);
     if (!issue) return res.status(404).json({ message: 'Issue not found.' });
     res.json({ issue });
-  } catch (error) { handleValidationError(error, res); }
+  } catch (error) { databaseError(error, res); }
 });
 
 router.delete('/admin/issues/:slug', adminOnly, async (req, res, next) => {
   try {
-    const issue = await Issue.findOneAndDelete({ slug: req.params.slug });
-    if (!issue) return res.status(404).json({ message: 'Issue not found.' });
+    const [result] = await pool.execute('DELETE FROM issues WHERE slug=?', [req.params.slug]);
+    if (!result.affectedRows) return res.status(404).json({ message: 'Issue not found.' });
     res.json({ message: 'Issue deleted.' });
   } catch (error) { next(error); }
 });
 
 router.get('/admin/submissions', adminOnly, async (_req, res, next) => {
   try {
-    const submissions = await Submission.find().sort({ updatedAt: -1 }).populate('owner', 'name email');
-    res.json({ submissions: submissions.map((submission) => ({
-      id: submission._id,
-      title: submission.title,
-      category: submission.category,
-      abstract: submission.abstract,
-      keywords: submission.keywords,
-      status: submission.status,
-      submittedAt: submission.submittedAt,
-      updatedAt: submission.updatedAt,
-      attachment: { name: submission.attachment.name, contentType: submission.attachment.contentType, size: submission.attachment.size },
-      author: submission.owner ? { name: submission.owner.name, email: submission.owner.email } : null,
+    const [rows] = await pool.query(`SELECT s.id, s.title, s.category, s.abstract, s.keywords, s.status,
+      s.submitted_at AS submittedAt, s.updated_at AS updatedAt, s.attachment_name AS attachmentName,
+      s.attachment_type AS attachmentType, s.attachment_size AS attachmentSize, u.name AS authorName, u.email AS authorEmail
+      FROM submissions s JOIN users u ON u.id=s.owner_id ORDER BY s.updated_at DESC`);
+    res.json({ submissions: rows.map((row) => ({
+      id: String(row.id), title: row.title, category: row.category, abstract: row.abstract, keywords: row.keywords,
+      status: row.status, submittedAt: row.submittedAt, updatedAt: row.updatedAt,
+      attachment: { name: row.attachmentName, contentType: row.attachmentType, size: row.attachmentSize },
+      author: { name: row.authorName, email: row.authorEmail },
     })) });
   } catch (error) { next(error); }
 });
 
 router.get('/admin/submissions/:id/file', adminOnly, async (req, res, next) => {
   try {
-    const submission = await Submission.findById(req.params.id).select('+attachment.data');
+    const [rows] = await pool.execute('SELECT attachment_name, attachment_type, attachment_size, attachment_data FROM submissions WHERE id=?', [req.params.id]);
+    const submission = rows[0];
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
-    res.set({
-      'Content-Type': submission.attachment.contentType,
-      'Content-Length': submission.attachment.size,
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(submission.attachment.name)}`,
-      'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'private, no-store',
-    });
-    res.send(submission.attachment.data);
+    res.set({ 'Content-Type': submission.attachment_type, 'Content-Length': submission.attachment_size,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(submission.attachment_name)}`,
+      'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' });
+    res.send(submission.attachment_data);
   } catch (error) { next(error); }
 });
 
 router.put('/admin/submissions/:id/status', adminOnly, async (req, res, next) => {
-  const allowedStatuses = ['submitted', 'in_review', 'revision_requested', 'accepted', 'rejected'];
   if (!allowedStatuses.includes(req.body?.status)) return res.status(400).json({ message: 'Choose a valid review status.' });
   try {
-    const submission = await Submission.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true, runValidators: true });
-    if (!submission) return res.status(404).json({ message: 'Submission not found.' });
-    res.json({ status: submission.status });
+    const [result] = await pool.execute('UPDATE submissions SET status=? WHERE id=?', [req.body.status, req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ message: 'Submission not found.' });
+    res.json({ status: req.body.status });
   } catch (error) { next(error); }
 });
 

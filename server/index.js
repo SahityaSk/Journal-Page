@@ -1,12 +1,12 @@
 import 'dotenv/config';
 import express from 'express';
 import helmet from 'helmet';
-import mongoose from 'mongoose';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import issueRoutes from './issueRoutes.js';
 import accountRoutes from './accountRoutes.js';
 import seedDatabase from './seed.js';
+import pool, { initializeDatabase } from './db.js';
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -41,8 +41,8 @@ app.use((error, _req, res, _next) => {
 });
 
 async function start() {
-  if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is required. Copy .env.example to .env and configure MongoDB.');
-  await mongoose.connect(process.env.MONGODB_URI);
+  if (!process.env.SQL_PASSWORD) throw new Error('SQL_PASSWORD is required. Copy .env.example to .env and configure MariaDB/MySQL.');
+  await initializeDatabase();
   await seedDatabase();
 
   app.use(express.static(builtClient));
@@ -50,7 +50,8 @@ async function start() {
   app.listen(port, () => console.log(`INSAT API and site are running on port ${port}.`));
 }
 
-start().catch((error) => {
+start().catch(async (error) => {
   console.error(`Startup failed: ${error.message}`);
+  await pool.end();
   process.exitCode = 1;
 });
