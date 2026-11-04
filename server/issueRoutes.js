@@ -17,14 +17,27 @@ function adminOnly(req, res, next) {
 
 function validateIssue(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return 'Provide an issue object.';
-  const required = ['volume', 'year', 'date', 'period', 'title'];
-  const missing = required.filter((field) => !String(input[field] ?? '').trim());
+  const required = ['volume', 'date', 'period', 'title'];
+  const missing = required.filter((field) => typeof input[field] !== 'string' || !input[field].trim());
   if (missing.length) return `Required fields: ${missing.join(', ')}.`;
   if (!Number.isInteger(Number(input.year)) || Number(input.year) < 2000 || Number(input.year) > 2100) return 'Year must be a valid four-digit year.';
   if (input.type && !['regular', 'special'].includes(input.type)) return 'Type must be regular or special.';
   if (!Array.isArray(input.articles)) return 'Articles must be an array.';
   for (const [index, article] of input.articles.entries()) {
-    if (!article?.category?.trim() || !article?.title?.trim() || !article?.authors?.trim()) return `Article ${index + 1} needs a category, title, and author list.`;
+    if (!article || typeof article !== 'object' || Array.isArray(article)
+      || typeof article.category !== 'string' || !article.category.trim()
+      || typeof article.title !== 'string' || !article.title.trim()
+      || typeof article.authors !== 'string' || !article.authors.trim()) {
+      return `Article ${index + 1} needs a category, title, and author list.`;
+    }
+    if (article.category.length > 120 || article.title.length > 700 || article.authors.length > 500
+      || (article.pages != null && (typeof article.pages !== 'string' || article.pages.length > 40))) {
+      return `Article ${index + 1} exceeds the allowed field length.`;
+    }
+  }
+  if (input.articles.length > 500) return 'An issue may contain at most 500 articles.';
+  for (const [field, max] of [['volume', 80], ['date', 100], ['period', 120], ['title', 240], ['subtitle', 300], ['descriptor', 500], ['cover', 50]]) {
+    if (input[field] != null && (typeof input[field] !== 'string' || input[field].length > max)) return `${field} must be at most ${max} characters.`;
   }
   return null;
 }

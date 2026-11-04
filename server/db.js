@@ -2,7 +2,9 @@ import mysql from 'mysql2/promise';
 
 const pool = mysql.createPool({
   host: process.env.SQL_HOST || '127.0.0.1',
-  port: Number(process.env.SQL_PORT || 3306),
+  // The local Compose stack maps MariaDB to 3307; allow the standard port for
+  // deployments that do not provide SQL_PORT.
+  port: Number(process.env.SQL_PORT || 3307),
   user: process.env.SQL_USER || 'insat',
   password: process.env.SQL_PASSWORD || '',
   database: process.env.SQL_DATABASE || 'insat_journal',
@@ -16,6 +18,9 @@ const pool = mysql.createPool({
 export default pool;
 
 export async function initializeDatabase() {
+  if (!Number.isInteger(Number(process.env.SQL_PORT || 3307)) || Number(process.env.SQL_PORT || 3307) < 1 || Number(process.env.SQL_PORT || 3307) > 65535) {
+    throw new Error('SQL_PORT must be an integer between 1 and 65535.');
+  }
   await pool.query(`CREATE TABLE IF NOT EXISTS issues (
     slug VARCHAR(120) PRIMARY KEY,
     volume VARCHAR(80) NOT NULL,

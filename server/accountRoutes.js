@@ -115,7 +115,10 @@ router.post('/auth/register', limitAuthAttempts, async (req, res, next) => {
 });
 
 router.post('/auth/login', limitAuthAttempts, async (req, res, next) => {
-  if (typeof req.body?.email !== 'string' || typeof req.body?.password !== 'string') return res.status(400).json({ message: 'Enter your email and password.' });
+  if (typeof req.body?.email !== 'string' || req.body.email.length > 254
+    || typeof req.body?.password !== 'string' || req.body.password.length > 128) {
+    return res.status(400).json({ message: 'Enter a valid email and password.' });
+  }
   try {
     const [rows] = await pool.execute('SELECT id, name, email, password_hash FROM users WHERE email=? LIMIT 1', [req.body.email.trim().toLowerCase()]);
     const user = rows[0];
